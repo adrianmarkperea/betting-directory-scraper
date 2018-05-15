@@ -22,11 +22,8 @@ def extractNapInformation(nap_element, nap_entry):
     nap_source_element = nap_element.find_element_by_xpath('//div[@class=\'nap-source\']/a')
     nap_name = nap_name_element.text + ' ({})'.format(nap_source_element.text)
 
-    # result_element = nap_element.find_element_by_xpath('td[4]')
-    # result = result_element.text
-    #
     odds_element = nap_element.find_element_by_xpath('td[5]')
-    odds = '"' + odds_element.text + '"'
+    odds = '"{}"'.fomrat(odds_element.text)
 
     view_results_element = nap_element.find_element_by_class_name('nap-odds')
     results_link = view_results_element.get_attribute('href')
@@ -34,7 +31,6 @@ def extractNapInformation(nap_element, nap_entry):
     nap_entry.runner_name = runner_name
     nap_entry.runner_profile_link = runner_profile_link
     nap_entry.nap_name = nap_name
-    # nap_entry.result = result
     nap_entry.odds = odds
     nap_entry.results_link = results_link
 
@@ -66,7 +62,6 @@ def extractResultsInformation(browser, nap_entry):
     racecard_table_element = browser.find_element_by_class_name('racecard-table')
     racecard_entry_elements = racecard_table_element.find_elements_by_xpath('tbody/tr')
 
-    # racecard_entries = []
     other_runners = []
     other_trainers = []
     other_jockeys = []
@@ -90,22 +85,67 @@ def extractResultsInformation(browser, nap_entry):
         other_runners.append(runner_name)
         other_trainers.append(trainer_name)
         other_jockeys.append(jockey_name)
-        # racecard_entries.append({'runner_name': runner_name,
-        #                          'jockey_name': jockey_name,
-        #                          'trainer_name': trainer_name})
 
-    # nap_entry.racecard_entries = racecard_entries
     nap_entry.other_runners = other_runners
     nap_entry.other_trainers = other_trainers
     nap_entry.other_jockeys = other_jockeys
 
+def parse(nap_element, current_date, browser, timeout):
+    new_nap_entry = NapEntry()
+
+    new_nap_entry.date = '{}/{}/{}'.format(current_date.day,
+        current_date.month, current_date.year)
+
+    print('Extracting nap information...')
+    extractNapInformation(nap_element, new_nap_entry)
+    print('Nap information extracted')
+
+    print('Opening nap owner info at [{}]...'.format(new_nap_entry.runner_profile_link))
+    browser.get(new_nap_entry.runner_profile_link)
+    try:
+        WebDriverWait(browser, timeout).until(
+            EC.visibility_of_element_located((By.CLASS_NAME, 'player-info'))
+        )
+
+        print('Nap owner info opened')
+        print('Extracting nap owner information...')
+        extractOwnerInformation(browser, new_nap_entry)
+        print('Nap owner information extracted')
+
+    except TimeoutException:
+        print('[{}] cannot be found!'.format(
+            new_nap_entry.runner_profile_link)
+        )
+        new_nap_entry.owner = 'UNDEFINED'
+
+    print('Opening results at [{}]...'.format(new_nap_entry.results_link))
+    browser.get(new_nap_entry.results_link)
+    try:
+        WebDriverWait(browser, timeout).until(
+            EC.visibility_of_element_located(
+                (By.CLASS_NAME, 'racecard-table')
+            )
+        )
+        print('Results opened')
+
+        print('Extracting results information...')
+        extractResultsInformation(browser, new_nap_entry)
+        print('Results extracted')
+
+    except TimeoutException:
+        print('[{}] cannot be found!'.format(
+            new_nap_entry.runner_profile_link)
+        )
+
+    return new_nap_entry
+
 def scrape(url, current_date, timeout = 5):
+    chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
     options = webdriver.ChromeOptions()
     options.add_argument('-incognito')
+    options.add_argument('headless')
 
-    chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
     main_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
-    sub_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
 
     main_browser.get(url)
 
@@ -123,58 +163,10 @@ def scrape(url, current_date, timeout = 5):
 
     nap_entries = []
     for nap_element in nap_elements:
-
-        new_nap_entry = NapEntry()
-
-        new_nap_entry.date = '{}/{}/{}'.format(current_date.day,
-            current_date.month, current_date.year)
-
-        print('Extracting nap information...')
-        extractNapInformation(nap_element, new_nap_entry)
-        print('Nap information extracted')
-
-        print('Opening nap owner info at [{}]...'.format(new_nap_entry.runner_profile_link))
-        sub_browser.get(new_nap_entry.runner_profile_link)
-        try:
-            WebDriverWait(sub_browser, timeout).until(
-                EC.visibility_of_element_located((By.CLASS_NAME, 'player-info'))
-            )
-
-            print('Nap owner info opened')
-            print('Extracting nap owner information...')
-            extractOwnerInformation(sub_browser, new_nap_entry)
-            print('Nap owner information extracted')
-
-        except TimeoutException:
-            print('[{}] cannot be found!'.format(
-                new_nap_entry.runner_profile_link)
-            )
-            new_nap_entry.owner = 'UNDEFINED'
-
-        print('Opening results at [{}]...'.format(new_nap_entry.results_link))
-        sub_browser.get(new_nap_entry.results_link)
-        try:
-            WebDriverWait(sub_browser, timeout).until(
-                EC.visibility_of_element_located(
-                    (By.CLASS_NAME, 'racecard-table')
-                )
-            )
-            print('Results opened')
-
-            print('Extracting results information...')
-            extractResultsInformation(sub_browser, new_nap_entry)
-            print('Results extracted')
-
-        except TimeoutException:
-            print('[{}] cannot be found!'.format(
-                new_nap_entry.runner_profile_link)
-            )
-
-        nap_entries.append(new_nap_entry)
+        nap_entries.append(parse(nap_element))
 
     print('Finished extracting')
     main_browser.quit()
-    sub_browser.quit()
 
     return nap_entries
 
@@ -203,14 +195,6 @@ def write_entries(worksheet, row, entries_to_write, format):
         for jockey in entry.other_jockeys:
             worksheet.write(row, column, jockey, format)
             column += 1
-
-        # worksheet.write(row, 8, '\n'.join(
-        #     e['jockey_name'] for e in entry.racecard_entries
-        # ), format)
-        # worksheet.write(row, 9, '\n'.join(
-        #     e['trainer_name'] for e in entry.racecard_entries
-        # ), format)
-
         row += 1
 
 def generate_url(current_date):
@@ -256,9 +240,6 @@ if __name__ == '__main__':
     worksheet.merge_range('L1:AB2', 'Other Horses', other_horses_format)
     worksheet.merge_range('AC1:AS2', 'Other Trainers', other_trainers_format)
     worksheet.merge_range('AT1:BJ2', 'Other Jockeys', other_jockeys_format)
-    # worksheet.write(0, 28, 'Other Trainers', other_trainers_format)
-    # worksheet.write(0, 45, 'Other Jockeys', other_jockeys_format)
-
 
     row = 2
 
