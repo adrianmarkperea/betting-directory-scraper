@@ -5,10 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-timeout = 5
-
 class NapEntry : pass
-
 
 def getNapsList(browser):
     return browser.find_elements_by_class_name('dog-list-item')
@@ -73,69 +70,73 @@ def extractResultsInformation(browser, nap_entry):
 
     nap_entry.racecard_entries = racecard_entries
 
-options = webdriver.ChromeOptions()
-options.add_argument('-incognito')
+def scrape(url, timeout = 5):
+    options = webdriver.ChromeOptions()
+    options.add_argument('-incognito')
 
-chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
-main_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
-sub_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
+    chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
+    main_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
+    sub_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
 
-main_browser.get('http://racing.betting-directory.com/naps/12th-may-2018.php')
+    main_browser.get(url)
 
-try:
-    WebDriverWait(main_browser, timeout).until(
-        EC.visibility_of_element_located((By.CLASS_NAME, 'naps-list-contain'))
-    )
-except TimeoutException:
-    print('Timed out waiting for page to load')
-    main_browser.quit()
-
-nap_elements = getNapsList(main_browser)
-
-for nap_element in nap_elements:
-
-    new_nap_entry = NapEntry()
-
-    print('Extracting nap information...')
-    extractNapInformation(nap_element, new_nap_entry)
-    print('Nap information extracted')
-
-    print('Opening nap owner info at [{}]...'.format(new_nap_entry.runner_profile_link))
-    sub_browser.get(new_nap_entry.runner_profile_link)
     try:
-        WebDriverWait(sub_browser, timeout).until(
-            EC.visibility_of_element_located((By.CLASS_NAME, 'player-info'))
+        WebDriverWait(main_browser, timeout).until(
+            EC.visibility_of_element_located((By.CLASS_NAME, 'naps-list-contain'))
         )
-
-        print('Nap owner info opened')
-        print('Extracting nap owner information...')
-        extractOwnerInformation(sub_browser, new_nap_entry)
-        print('Nap owner information extracted')
-
     except TimeoutException:
-        print('[{}] cannot be found!'.format(
-            new_nap_entry.runner_profile_link)
-        )
+        print('Timed out waiting for page to load')
+        main_browser.quit()
 
-    print('Opening results at [{}]...'.format(new_nap_entry.results_link))
-    sub_browser.get(new_nap_entry.results_link)
-    try:
-        WebDriverWait(sub_browser, timeout).until(
-            EC.visibility_of_element_located(
-                (By.CLASS_NAME, 'racecard-table')
+    nap_elements = getNapsList(main_browser)
+
+    for nap_element in nap_elements:
+
+        new_nap_entry = NapEntry()
+
+        print('Extracting nap information...')
+        extractNapInformation(nap_element, new_nap_entry)
+        print('Nap information extracted')
+
+        print('Opening nap owner info at [{}]...'.format(new_nap_entry.runner_profile_link))
+        sub_browser.get(new_nap_entry.runner_profile_link)
+        try:
+            WebDriverWait(sub_browser, timeout).until(
+                EC.visibility_of_element_located((By.CLASS_NAME, 'player-info'))
             )
-        )
-        print('Results opened')
 
-        print('Extracting results information...')
-        extractResultsInformation(sub_browser, new_nap_entry)
-        print('Results extracted')
+            print('Nap owner info opened')
+            print('Extracting nap owner information...')
+            extractOwnerInformation(sub_browser, new_nap_entry)
+            print('Nap owner information extracted')
 
-    except TimeoutException:
-        print('[{}] cannot be found!'.format(
-            new_nap_entry.runner_profile_link)
-        )
+        except TimeoutException:
+            print('[{}] cannot be found!'.format(
+                new_nap_entry.runner_profile_link)
+            )
 
-print('Finished extracting')
-main_browser.quit()
-sub_browser.quit()
+        print('Opening results at [{}]...'.format(new_nap_entry.results_link))
+        sub_browser.get(new_nap_entry.results_link)
+        try:
+            WebDriverWait(sub_browser, timeout).until(
+                EC.visibility_of_element_located(
+                    (By.CLASS_NAME, 'racecard-table')
+                )
+            )
+            print('Results opened')
+
+            print('Extracting results information...')
+            extractResultsInformation(sub_browser, new_nap_entry)
+            print('Results extracted')
+
+        except TimeoutException:
+            print('[{}] cannot be found!'.format(
+                new_nap_entry.runner_profile_link)
+            )
+
+    print('Finished extracting')
+    main_browser.quit()
+    sub_browser.quit()
+
+if __name__ == '__main__':
+    scrape('http://racing.betting-directory.com/naps/12th-may-2018.php')
