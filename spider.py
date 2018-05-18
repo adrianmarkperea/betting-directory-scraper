@@ -6,9 +6,24 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 import xlsxwriter
 from datetime import date, timedelta
-from multiprocessing import Pool
+import threading
+import time
+import sys
 
 class NapEntry : pass
+
+class ParserThread(threading.Thread):
+    def __init__(self, nap_element, current_date, browser, timeout):
+        threading.Thread.__init__(self)
+        self.nap_element = nap_element
+        self.current_date = current_date
+        self.browser = browser
+        self.timeout = timeout
+        self.new_nap_entry = ''
+    def run(self):
+        print('Starting thread')
+        self.new_nap_entry = parse(self.nap_element, self.current_date, self.browser, self.timeout)
+        print('thread finished')
 
 def getNapsList(browser):
     return browser.find_elements_by_class_name('dog-list-item')
@@ -19,11 +34,11 @@ def extractNapInformation(nap_element, nap_entry):
     runner_profile_link = runner_name_element.get_attribute('href')
 
     nap_name_element = nap_element.find_element_by_class_name('nap-name')
-    nap_source_element = nap_element.find_element_by_xpath('//div[@class=\'nap-source\']/a')
-    nap_name = nap_name_element.text + ' ({})'.format(nap_source_element.text)
+    nap_source_element = nap_element.find_element_by_class_name('nap-source')
+    nap_name = nap_name_element.text + ' {}'.format(nap_source_element.text)
 
     odds_element = nap_element.find_element_by_xpath('td[5]')
-    odds = '"{}"'.fomrat(odds_element.text)
+    odds = '"{}"'.format(odds_element.text)
 
     view_results_element = nap_element.find_element_by_class_name('nap-odds')
     results_link = view_results_element.get_attribute('href')
@@ -42,6 +57,11 @@ def extractOwnerInformation(browser, nap_entry):
     nap_entry.owner = owner
 
 def extractResultsInformation(browser, nap_entry):
+    race_time = ''
+    race_track = ''
+    race_type = ''
+    num_runners = ''
+
     race_title_element = browser.find_element_by_xpath('//div[@class=\'ctleft\']')
     race_title_array = race_title_element.text.split()
     race_time = race_title_array[0]
@@ -54,10 +74,10 @@ def extractResultsInformation(browser, nap_entry):
     num_runners_element = browser.find_element_by_xpath('//div[@class=\'card-info\']/table/tbody/tr[3]/td[4]')
     num_runners = num_runners_element.text
 
-    nap_entry.race_time = race_time
-    nap_entry.race_track = race_track
-    nap_entry.race_type = race_type
-    nap_entry.num_runners = num_runners
+    nap_entry.race_time = race_time if race_time != '' else 'UNDEFINED'
+    nap_entry.race_track = race_track if race_track != '' else 'UNDEFINED'
+    nap_entry.race_type = race_type if race_type != '' else 'UNDEFINED'
+    nap_entry.num_runners = num_runners if num_runners != '' else 'UNDEFINED'
 
     racecard_table_element = browser.find_element_by_class_name('racecard-table')
     racecard_entry_elements = racecard_table_element.find_elements_by_xpath('tbody/tr')
@@ -101,8 +121,9 @@ def parse(nap_element, current_date, browser, timeout):
     print('Nap information extracted')
 
     print('Opening nap owner info at [{}]...'.format(new_nap_entry.runner_profile_link))
-    browser.get(new_nap_entry.runner_profile_link)
+
     try:
+        browser.get(new_nap_entry.runner_profile_link)
         WebDriverWait(browser, timeout).until(
             EC.visibility_of_element_located((By.CLASS_NAME, 'player-info'))
         )
@@ -119,8 +140,8 @@ def parse(nap_element, current_date, browser, timeout):
         new_nap_entry.owner = 'UNDEFINED'
 
     print('Opening results at [{}]...'.format(new_nap_entry.results_link))
-    browser.get(new_nap_entry.results_link)
     try:
+        browser.get(new_nap_entry.results_link)
         WebDriverWait(browser, timeout).until(
             EC.visibility_of_element_located(
                 (By.CLASS_NAME, 'racecard-table')
@@ -136,37 +157,47 @@ def parse(nap_element, current_date, browser, timeout):
         print('[{}] cannot be found!'.format(
             new_nap_entry.runner_profile_link)
         )
+        nap_entry.race_time = 'UNDEFINED'
+        nap_entry.race_track = 'UNDEFINED'
+        nap_entry.race_type = 'UNDEFINED'
+        nap_entry.num_runners = 'UNDEFINED'
 
     return new_nap_entry
 
-def scrape(url, current_date, timeout = 5):
-    chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
-    options = webdriver.ChromeOptions()
-    options.add_argument('-incognito')
-    options.add_argument('headless')
-
-    main_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=options)
-
-    main_browser.get(url)
+def scrape(url, main_browser, sub_browsers, current_date, timeout = 5):
 
     try:
+        main_browser.get(url)
         WebDriverWait(main_browser, timeout).until(
             EC.visibility_of_element_located((By.CLASS_NAME, 'naps-list-contain'))
         )
     except TimeoutException:
         print('Timed out waiting for page to load')
-        main_browser.quit()
-        sub_browser.quit()
         return None
 
     nap_elements = getNapsList(main_browser)
 
     nap_entries = []
-    for nap_element in nap_elements:
-        nap_entries.append(parse(nap_element))
+    i = 0
+    while i < len(nap_elements):
+        threads = []
+        count = 0
+        while count < len(sub_browsers):
+            nap_element = nap_elements[i]
+            t = ParserThread(nap_element, current_date, sub_browsers[count], timeout)
+            t.start()
+            threads.append(t)
+            count += 1
+            i += 1
+            if i == len(nap_elements):
+                break
+            time.sleep(1)
+        for t in threads:
+            t.join()
+        for t in threads:
+            nap_entries.append(t.new_nap_entry)
 
     print('Finished extracting')
-    main_browser.quit()
 
     return nap_entries
 
@@ -187,11 +218,11 @@ def write_entries(worksheet, row, entries_to_write, format):
         for runner in entry.other_runners:
             worksheet.write(row, column, runner, format)
             column += 1
-        column = 28
+        column = 61
         for trainer in entry.other_trainers:
             worksheet.write(row, column, trainer, format)
             column += 1
-        column = 45
+        column = 111
         for jockey in entry.other_jockeys:
             worksheet.write(row, column, jockey, format)
             column += 1
@@ -204,12 +235,18 @@ def generate_url(current_date):
     year = date_array[2]
     base_url = 'http://racing.betting-directory.com/'
     url = base_url + 'naps/{}th-{}-{}.php'.format(day, month, year)
-    print(url)
     return url
 
 if __name__ == '__main__':
+
     # init workbook
-    workbook = xlsxwriter.Workbook('NAPS_INFO.xlsx')
+    workbook = xlsxwriter.Workbook('July 7 to December 2017.xlsx')
+    # year-month-day
+    start_date = date(2017, 7, 7)
+    end_date = date(2017, 12, 31)
+    # num browsers
+    num_browsers = 8
+
     worksheet = workbook.add_worksheet()
 
     # define formats
@@ -237,25 +274,63 @@ if __name__ == '__main__':
     worksheet.write(1, 9, 'Race Type', nap_horse_and_race_format)
     worksheet.write(1, 10, 'Runners', nap_horse_and_race_format)
 
-    worksheet.merge_range('L1:AB2', 'Other Horses', other_horses_format)
-    worksheet.merge_range('AC1:AS2', 'Other Trainers', other_trainers_format)
-    worksheet.merge_range('AT1:BJ2', 'Other Jockeys', other_jockeys_format)
+    worksheet.merge_range('L1:BI2', 'Other Horses', other_horses_format)
+    worksheet.merge_range('BJ1:DG2', 'Other Trainers', other_trainers_format)
+    worksheet.merge_range('DH1:FE2', 'Other Jockeys', other_jockeys_format)
 
     row = 2
 
-    start_date = date(2016, 12, 1)
-    end_date = date(2016, 12, 1)
+    chrome_path = os.path.dirname(os.path.realpath(__file__)) + '/chromedriver_win32/chromedriver.exe'
+    chrome_options = webdriver.ChromeOptions()
+    chrome_prefs = {}
+    chrome_options.experimental_options["prefs"] = chrome_prefs
+    chrome_prefs["profile.default_content_settings"] = {"images": 2}
+    chrome_options.add_argument('-incognito')
+    chrome_options.add_argument("--window-size=200,200")
+
+    main_browser = webdriver.Chrome(executable_path=chrome_path, chrome_options=chrome_options)
+    sub_browsers = [webdriver.Chrome(executable_path=chrome_path, chrome_options=chrome_options) for i in range(num_browsers)]
 
     delta = end_date - start_date
+    skipped_dates = []
 
     for i in range(delta.days + 1):
         current_date = start_date + timedelta(days=i)
         url = generate_url(current_date)
+        print('Scraping: {}'.format(url))
+        try:
+            entries_to_write = scrape(url, main_browser, sub_browsers, current_date, timeout = 20)
+        except KeyboardInterrupt:
+            workbook.close()
+            main_browser.quit()
+            for sb in sub_browsers:
+                sb.quit()
+            sys.exit('Program Interrupted. Closing.')
+        except:
+            print('Error SCRAPING at: {}. Skipping.'.format(current_date))
+            skipped_dates.append(current_date)
+            continue
 
-        entries_to_write = scrape(url, current_date, timeout = 10)
         if entries_to_write is not None:
-            write_entries(worksheet, row, entries_to_write, entry_format)
+            try:
+                write_entries(worksheet, row, entries_to_write, entry_format)
+            except:
+                print('Error WRITING at: {}. Skipping'.format(current_date))
+                skipped_dates.append(current_date)
+                continue
+
             row += len(entries_to_write)
 
     workbook.close()
+
+    logs_name = 'skipped_dates.txt'
+    print('Printing skipped dates to {}'.format(logs_name))
+    f = open(logs_name, 'w+')
+    for date in skipped_dates:
+        f.write('{}\r\n'.format(date))
+    f.close()
+
+    main_browser.quit()
+    for sb in sub_browsers:
+        sb.quit()
     print('Program finished')
