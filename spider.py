@@ -32,6 +32,7 @@ def extractNapInformation(nap_element, nap_entry):
     runner_name = ''
     runner_profile_link = ''
     nap_name = ''
+    results = ''
     odds = ''
     results_link = ''
 
@@ -43,8 +44,11 @@ def extractNapInformation(nap_element, nap_entry):
     nap_source_element = nap_element.find_element_by_class_name('nap-source')
     nap_name = nap_name_element.text + ' {}'.format(nap_source_element.text)
 
+    results_element = nap_element.find_element_by_xpath('td[4]')
+    results = results_element.text
+
     odds_element = nap_element.find_element_by_xpath('td[5]')
-    odds = '"{}"'.format(odds_element.text)
+    odds = '{}'.format(odds_element.text)
 
     view_results_element = nap_element.find_element_by_class_name('nap-odds')
     results_link = view_results_element.get_attribute('href')
@@ -52,6 +56,7 @@ def extractNapInformation(nap_element, nap_entry):
     nap_entry.runner_name = runner_name if runner_name != '' else 'UNDEFINED'
     nap_entry.runner_profile_link = runner_profile_link if runner_profile_link != '' else 'UNDEFINED'
     nap_entry.nap_name = nap_name if nap_name != '' else 'UNDEFINED'
+    nap_entry.results = results if results != '' else 'UNDEFINED'
     nap_entry.odds = odds if odds != '' else 'UNDEFINED'
     nap_entry.results_link = results_link if results_link != '' else 'UNDEFINED'
 
@@ -106,7 +111,7 @@ def extractResultsInformation(browser, nap_entry):
             'td[4]/div'
         ).text
 
-        if runner_name.lower() == nap_entry.runner_name.lower():
+        if runner_name == nap_entry.runner_name:
             current_jockey_name = jockey_name
             current_trainer_name = trainer_name
             continue
@@ -207,6 +212,7 @@ def scrape(url, main_browser, sub_browsers, current_date, timeout = 5):
             t.join()
         for t in threads:
             nap_entries.append(t.new_nap_entry)
+        break
 
     print('Finished extracting')
 
@@ -222,18 +228,19 @@ def write_entries(worksheet, row, entries_to_write, format):
         worksheet.write(row, 5, entry.owner, format)
         worksheet.write(row, 6, entry.jockey_name, format)
         worksheet.write(row, 7, entry.trainer_name, format)
-        worksheet.write(row, 8, entry.odds, format)
-        worksheet.write(row, 9, entry.race_type, format)
-        worksheet.write(row, 10, entry.num_runners, format)
-        column = 11
+        worksheet.write(row, 8, entry.results, format)
+        worksheet.write(row, 9, entry.odds, format)
+        worksheet.write(row, 10, entry.race_type, format)
+        worksheet.write(row, 11, entry.num_runners, format)
+        column = 12
         for runner in entry.other_runners:
             worksheet.write(row, column, runner, format)
             column += 1
-        column = 61
+        column = 62
         for trainer in entry.other_trainers:
             worksheet.write(row, column, trainer, format)
             column += 1
-        column = 111
+        column = 112
         for jockey in entry.other_jockeys:
             worksheet.write(row, column, jockey, format)
             column += 1
@@ -251,12 +258,12 @@ def generate_url(current_date):
 if __name__ == '__main__':
 
     # init workbook
-    workbook = xlsxwriter.Workbook('skipped.xlsx')
+    workbook = xlsxwriter.Workbook('test.xlsx')
     # year-month-day
-    start_date = date(2017, 6, 10)
-    end_date = date(2017, 6, 10)
+    start_date = date(2017, 6, 15)
+    end_date = date(2017, 6, 15)
     # num browsers
-    num_browsers = 8
+    num_browsers = 1
 
     worksheet = workbook.add_worksheet()
 
@@ -272,7 +279,7 @@ if __name__ == '__main__':
     worksheet.set_column(0, 10, 25)
 
     # write headers
-    worksheet.merge_range('A1:K1', 'NAP HORSE & RACE', nap_horse_and_race_format)
+    worksheet.merge_range('A1:L1', 'NAP HORSE & RACE', nap_horse_and_race_format)
     worksheet.write(1, 0, 'Date', nap_horse_and_race_format)
     worksheet.write(1, 1, 'Nap', nap_horse_and_race_format)
     worksheet.write(1, 2, 'Tipster', nap_horse_and_race_format)
@@ -281,13 +288,14 @@ if __name__ == '__main__':
     worksheet.write(1, 5, 'Owner', nap_horse_and_race_format)
     worksheet.write(1, 6, 'Trainer', nap_horse_and_race_format)
     worksheet.write(1, 7, 'Jockey', nap_horse_and_race_format)
-    worksheet.write(1, 8, 'SP', nap_horse_and_race_format)
-    worksheet.write(1, 9, 'Race Type', nap_horse_and_race_format)
-    worksheet.write(1, 10, 'Runners', nap_horse_and_race_format)
+    worksheet.write(1, 8, 'Results', nap_horse_and_race_format)
+    worksheet.write(1, 9, 'SP', nap_horse_and_race_format)
+    worksheet.write(1, 10, 'Race Type', nap_horse_and_race_format)
+    worksheet.write(1, 11, 'Runners', nap_horse_and_race_format)
 
-    worksheet.merge_range('L1:BI2', 'Other Horses', other_horses_format)
-    worksheet.merge_range('BJ1:DG2', 'Other Trainers', other_trainers_format)
-    worksheet.merge_range('DH1:FE2', 'Other Jockeys', other_jockeys_format)
+    worksheet.merge_range('M1:BJ2', 'Other Horses', other_horses_format)
+    worksheet.merge_range('BK1:DH2', 'Other Trainers', other_trainers_format)
+    worksheet.merge_range('DI1:FF2', 'Other Jockeys', other_jockeys_format)
 
     row = 2
 
@@ -304,13 +312,6 @@ if __name__ == '__main__':
 
     delta = end_date - start_date
     skipped_dates = []
-
-    # dates = [date(2017, 7, 29), date(2017, 9, 3),
-    #          date(2017, 9, 11), date(2017, 9, 28),
-    #          date(2017, 9, 29), date(2017, 10, 30),
-    #          date(2017, 11, 5),
-    #          date(2017, 12, 1), date(2018, 3, 1),
-    #          date(2018, 4, 17)]
 
     for i in range(delta.days + 1):
         current_date = start_date + timedelta(days=i)
@@ -338,6 +339,7 @@ if __name__ == '__main__':
                 continue
 
             row += len(entries_to_write)
+        break
 
     workbook.close()
 
