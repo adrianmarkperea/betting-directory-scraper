@@ -29,6 +29,12 @@ def getNapsList(browser):
     return browser.find_elements_by_class_name('dog-list-item')
 
 def extractNapInformation(nap_element, nap_entry):
+    runner_name = ''
+    runner_profile_link = ''
+    nap_name = ''
+    odds = ''
+    results_link = ''
+
     runner_name_element = nap_element.find_element_by_class_name('runner-name')
     runner_name = runner_name_element.text
     runner_profile_link = runner_name_element.get_attribute('href')
@@ -43,24 +49,27 @@ def extractNapInformation(nap_element, nap_entry):
     view_results_element = nap_element.find_element_by_class_name('nap-odds')
     results_link = view_results_element.get_attribute('href')
 
-    nap_entry.runner_name = runner_name
-    nap_entry.runner_profile_link = runner_profile_link
-    nap_entry.nap_name = nap_name
-    nap_entry.odds = odds
-    nap_entry.results_link = results_link
+    nap_entry.runner_name = runner_name if runner_name != '' else 'UNDEFINED'
+    nap_entry.runner_profile_link = runner_profile_link if runner_profile_link != '' else 'UNDEFINED'
+    nap_entry.nap_name = nap_name if nap_name != '' else 'UNDEFINED'
+    nap_entry.odds = odds if odds != '' else 'UNDEFINED'
+    nap_entry.results_link = results_link if results_link != '' else 'UNDEFINED'
 
 def extractOwnerInformation(browser, nap_entry):
+    owner = ''
     player_info_element = browser.find_element_by_class_name('player-info')
     owner = player_info_element.find_element_by_xpath(
         '//div[@class=\'info-item\'][3]/div[1]/span[1]'
     ).text
-    nap_entry.owner = owner
+    nap_entry.owner = owner if owner != '' else 'UNDEFINED'
 
 def extractResultsInformation(browser, nap_entry):
     race_time = ''
     race_track = ''
     race_type = ''
     num_runners = ''
+    current_jockey_name = ''
+    current_trainer_name = ''
 
     race_title_element = browser.find_element_by_xpath('//div[@class=\'ctleft\']')
     race_title_array = race_title_element.text.split()
@@ -97,9 +106,9 @@ def extractResultsInformation(browser, nap_entry):
             'td[4]/div'
         ).text
 
-        if runner_name == nap_entry.runner_name:
-            nap_entry.jockey_name = jockey_name
-            nap_entry.trainer_name = trainer_name
+        if runner_name.lower() == nap_entry.runner_name.lower():
+            current_jockey_name = jockey_name
+            current_trainer_name = trainer_name
             continue
 
         other_runners.append(runner_name)
@@ -109,6 +118,8 @@ def extractResultsInformation(browser, nap_entry):
     nap_entry.other_runners = other_runners
     nap_entry.other_trainers = other_trainers
     nap_entry.other_jockeys = other_jockeys
+    nap_entry.jockey_name = current_jockey_name if current_jockey_name != '' else 'UNDEFINED'
+    nap_entry.trainer_name = current_trainer_name if current_trainer_name != '' else 'UNDEFINED'
 
 def parse(nap_element, current_date, browser, timeout):
     new_nap_entry = NapEntry()
@@ -240,10 +251,10 @@ def generate_url(current_date):
 if __name__ == '__main__':
 
     # init workbook
-    workbook = xlsxwriter.Workbook('July 7 to December 2017.xlsx')
+    workbook = xlsxwriter.Workbook('skipped.xlsx')
     # year-month-day
-    start_date = date(2017, 7, 7)
-    end_date = date(2017, 12, 31)
+    start_date = date(2017, 6, 10)
+    end_date = date(2017, 6, 10)
     # num browsers
     num_browsers = 8
 
@@ -293,6 +304,13 @@ if __name__ == '__main__':
 
     delta = end_date - start_date
     skipped_dates = []
+
+    # dates = [date(2017, 7, 29), date(2017, 9, 3),
+    #          date(2017, 9, 11), date(2017, 9, 28),
+    #          date(2017, 9, 29), date(2017, 10, 30),
+    #          date(2017, 11, 5),
+    #          date(2017, 12, 1), date(2018, 3, 1),
+    #          date(2018, 4, 17)]
 
     for i in range(delta.days + 1):
         current_date = start_date + timedelta(days=i)
